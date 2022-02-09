@@ -1,0 +1,93 @@
+apply plugin : 'java'
+
+ext {
+  fileSeparator = System.properties['file.separator']
+  libDirectory = "libs"
+  nativeDirectory = "native"
+  buildDirectory = "build"
+  lwjglBaseName = "lwjgl"
+  lwjglJarName = "${lwjglBaseName}.jar"
+  lwjglUtilJarName = "${lwjglBaseName}_util.jar"
+  pngDecoderJarName = "PNGDecoder.jar"
+  lwjglVersion = "2.9.1"
+  lwjglName = "${lwjglBaseName}-${lwjglVersion}"
+  lwjglFileName = "${lwjglName}.zip"
+  lwjglJarDirectory = "jar"
+  aotCompile=true
+}
+
+def buildPathName(String ... folders){
+  def path = ""
+  folders.each{ path += it += fileSeparator} 
+  path
+}
+
+def determineOS(){
+  def osName = System.properties['os.name'].toLowerCase().replaceAll("\\s","")
+
+  if (osName.contains("mac")){
+    "macosx"
+  }
+  else if (osName.contains("linux")){
+    "linux"
+  }
+  else if (osName.contains("bsd")){
+    "freebsd"
+  }
+  else if (osName.contains("solaris")){
+    "solaris"
+  }
+  else{
+    "windows"
+  }
+}
+
+dependencies{
+  compile files(buildPathName(libDirectory,lwjglName,lwjglJarDirectory,lwjglJarName))
+  compile files(buildPathName(libDirectory,lwjglName,lwjglJarDirectory,lwjglUtilJarName))
+  compile files(buildPathName(libDirectory,lwjglName,lwjglJarDirectory,pngDecoderJarName))
+}
+
+task download(){
+  def l = new File(buildPathName(libDirectory))
+  if (!l.exists()) {
+    l.mkdir();
+  }
+
+  def f = new File(buildPathName(libDirectory,lwjglFileName))
+  if (!f.exists()) {
+    new URL("http://fergalgribben.com/${lwjglFileName}").withInputStream{ i -> f.withOutputStream{ it << i }}
+  }
+}
+
+task extractZip(type:Copy){
+  def zipFile = file(buildPathName(libDirectory, lwjglFileName))
+  def outputDir = file(buildPathName(libDirectory))
+
+  from zipTree(zipFile)
+  into outputDir
+}
+
+extractZip.dependsOn(download)
+compileJava.dependsOn(extractZip)
+
+jar {
+
+  from{
+    configurations.runtime.collect{ it.isDirectory() ? it : zipTree(it) }
+  }
+
+  manifest{
+    attributes 'Main-Class':"com.fergalgribben.${project.name}.Main"
+  }
+}
+
+task run(type:JavaExec){
+
+  main='-jar' 
+  args=[buildPathName(buildDirectory,libDirectory) + project.name + ".jar"]
+  jvmArgs=["-Djava.library.path=${buildPathName(libDirectory,lwjglName,nativeDirectory,determineOS())}"]
+
+}
+
+run.dependsOn(jar)
